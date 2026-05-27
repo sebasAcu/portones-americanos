@@ -97,16 +97,15 @@
   /* 3D Garage Door Animation */
   .hero-visual {
     position: absolute; right: 0; top: 0; bottom: 0;
-    width: 58%; overflow: hidden;
+    width: 58%; height: 100%; overflow: hidden;
     z-index: 1;
     cursor: pointer;
   }
   .hero-visual video {
-    position: absolute;
-    top: 0; left: 0;
     width: 100%; height: 100%;
     object-fit: cover;
     display: block;
+    pointer-events: none;
   }
 
   .garage-scene {
@@ -1198,8 +1197,12 @@
 
   <!-- 3D garage door visual -->
   <div class="hero-visual" id="heroVisual" onclick="toggleGarage()" style="cursor:pointer;">
-    <video id="garageVideo" preload="auto" playsinline muted webkit-playsinline x-webkit-airplay="allow" style="width:100%;height:100%;object-fit:cover;display:block;">
+    <video id="vidClose" preload="auto" playsinline muted webkit-playsinline style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;">
       <source src="garage.mp4" type="video/mp4">
+    </video>
+    <video id="vidOpen" preload="auto" playsinline muted webkit-playsinline style="width:100%;height:100%;object-fit:cover;display:none;pointer-events:none;">
+      <source src="Garaje Invertido.mov" type="video/quicktime">
+      <source src="Garaje Invertido.mov" type="video/mp4">
     </video>
     <div class="video-hint" id="videoHint">
       <div class="video-hint-ring">
@@ -1728,14 +1731,6 @@ window.addEventListener('scroll', () => {
   document.getElementById('scrollTop').classList.toggle('visible', window.scrollY > 400);
 });
 
-// ─── DOOR ANIMATION ───
-const heroVisual = document.getElementById('heroVisual');
-let doorOpen = false;
-function toggleDoor() {
-  doorOpen = !doorOpen;
-  heroVisual.classList.toggle('door-open', doorOpen);
-}
-setInterval(toggleDoor, 4000);
 
 // ─── REVEAL ON SCROLL ───
 const revealObserver = new IntersectionObserver((entries) => {
@@ -1833,96 +1828,75 @@ document.querySelectorAll('.product-card').forEach(card => {
 
   // ── GARAGE VIDEO CONTROL ──
   (function(){
-    const vid     = document.getElementById('garageVideo');
-    const hint    = document.getElementById('videoHint');
-    const hintIcon= document.getElementById('hintIcon');
-    if (!vid) return;
+    const vidClose  = document.getElementById('vidClose');
+    const vidOpen   = document.getElementById('vidOpen');
+    const hint      = document.getElementById('videoHint');
+    const hintIcon  = document.getElementById('hintIcon');
+    const hintLabel = document.getElementById('hintLabel');
+    if (!vidClose || !vidOpen) return;
 
-    // ── Timing exacto del video ──
-    // 0.0s  → portón completamente ABIERTO  (frame inicial)
-    // 0.0s  → 2.75s: portón CERRÁNDOSE
-    // 2.75s → 3.25s: pausa (portón cerrado)
-    // 3.25s → 5.875s: portón ABRIÉNDOSE
-    // 5.875s: portón completamente ABIERTO (final)
-
-    const T_CLOSE_START = 0.0;
-    const T_CLOSE_END   = 2.75;
-    const T_OPEN_START  = 3.25;
-    const T_OPEN_END    = 5.8;
-
-    // Estado: 'open' | 'closed' | 'closing' | 'opening'
+    // 'open' = portón arriba (listo para cerrar)
+    // 'closed' = portón abajo (listo para abrir)
+    // 'playing' = animando, ignorar clicks
     let state = 'open';
-    let busy  = false;
-
-    // Iniciar en frame del portón abierto
-    vid.addEventListener('loadedmetadata', () => {
-      vid.currentTime = 0.05;
-      updateHint();
-    });
-    // Fallback si ya cargó
-    if (vid.readyState >= 1) {
-      vid.currentTime = 0.05;
-      updateHint();
-    }
-
-    // Vigilar tiempo para pausar en el momento exacto
-    vid.addEventListener('timeupdate', () => {
-      if (state === 'closing' && vid.currentTime >= T_CLOSE_END) {
-        vid.pause();
-        vid.currentTime = T_CLOSE_END;
-        state = 'closed';
-        busy  = false;
-        updateHint();
-      }
-      if (state === 'opening' && vid.currentTime >= T_OPEN_END) {
-        vid.pause();
-        vid.currentTime = 0.05;
-        state = 'open';
-        busy  = false;
-        updateHint();
-      }
-    });
-
-    // Click: toggle cierre / apertura
-    window.toggleGarage = function() {
-      if (busy) return;
-
-      if (state === 'open') {
-        // ── CERRAR ──
-        busy  = true;
-        state = 'closing';
-        vid.currentTime = T_CLOSE_START;
-        vid.playbackRate = 1.0;
-        vid.play();
-        updateHint();
-
-      } else if (state === 'closed') {
-        // ── ABRIR ──
-        busy  = true;
-        state = 'opening';
-        vid.currentTime = T_OPEN_START;
-        vid.playbackRate = 1.0;
-        vid.play();
-        updateHint();
-      }
-      // Si está animando, ignorar click
-    };
 
     function updateHint() {
-      if (!hint || !hintIcon) return;
-      const label = document.getElementById('hintLabel');
       if (state === 'open') {
         hintIcon.innerHTML = '<polyline points="18 9 12 15 6 9"/>';
         hint.style.opacity = '1';
-        if (label) { label.textContent = 'Cerrar portón'; label.classList.remove('is-closed'); }
+        hintLabel.textContent = 'Cerrar portón';
+        hintLabel.classList.remove('is-closed');
       } else if (state === 'closed') {
         hintIcon.innerHTML = '<polyline points="18 15 12 9 6 15"/>';
         hint.style.opacity = '1';
-        if (label) { label.textContent = 'Abrir portón'; label.classList.add('is-closed'); }
+        hintLabel.textContent = 'Abrir portón';
+        hintLabel.classList.add('is-closed');
       } else {
         hint.style.opacity = '0';
       }
     }
+
+    // Mostrar primer frame de garage.mp4 (portón abierto)
+    function seekToStart(vid, cb) {
+      if (vid.readyState >= 1) { vid.currentTime = 0.01; if (cb) cb(); }
+      else vid.addEventListener('loadedmetadata', () => { vid.currentTime = 0.01; if (cb) cb(); }, { once: true });
+    }
+    seekToStart(vidClose, updateHint);
+
+    // Al terminar garage.mp4 → portón cerrado, queda en último frame
+    vidClose.addEventListener('ended', () => {
+      state = 'closed';
+      updateHint();
+    });
+
+    // Al terminar Garaje Invertido.mov → volver a mostrar garage.mp4 en frame inicial
+    vidOpen.addEventListener('ended', () => {
+      vidOpen.style.display = 'none';
+      vidClose.style.display = 'block';
+      seekToStart(vidClose, () => {
+        state = 'open';
+        updateHint();
+      });
+    });
+
+    window.toggleGarage = function() {
+      if (state === 'playing') return;
+
+      if (state === 'open') {
+        state = 'playing';
+        updateHint();
+        vidClose.currentTime = 0;
+        vidClose.play();
+
+      } else if (state === 'closed') {
+        state = 'playing';
+        updateHint();
+        vidClose.style.display = 'none';
+        vidOpen.style.display = 'block';
+        vidOpen.currentTime = 0;
+        vidOpen.play();
+      }
+    };
   })();
 
     // ── HAMBURGER MENU ──
